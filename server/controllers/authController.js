@@ -111,4 +111,70 @@ export const logout = async (req, res) =>{
     }
 }
 
-//verify otp
+//send verification otp to users email
+export const sendVerifyOtp = async (req,res)=>{
+    try {
+        const {userId} = req.body;
+        const user = await userModel.findById(userId)
+
+        if(user.isAccountVerified){
+            return res.json({success: false, message: "Account Already verified"})
+        }
+
+        const otp = String(Math.floor(100000+ Math.random()*900000))
+        
+        user.verifyOtp = otp;
+        user.verifyOtpExpiryAt = Date.now()+ 24*60*60*1000
+        await user.save();
+
+        const mailOptions = {
+            from : process.env.SENDER_EMAIL,
+            to: user.email,
+            subject: 'Account Verification Otp',
+            text: `Yopt otp is ${otp}. Verify your account using this otp`
+        }
+
+        await transpoter.sendMail(mailOptions);
+
+        res.json({success: true, message: "Verification OTP sent to your Email"})
+
+    } catch (error) {
+        console.log(error)
+        res.json({success: false, message: error.message})
+    }
+}
+
+//verify using otp after otp receive
+export const verifyOtp = async (req,res) =>{
+    try {
+        const {userId, otp} = req.body;
+        if(!userId || !otp){
+            return res.json({success: false, message: "Missing Details"})
+        }
+
+        const user = await userModel.findById(userId);
+
+        if(!user){
+            return res.json({success: false, message: "User not Found"}) 
+        }
+
+        if(user.verifyOtp === '' || user.verifyOtp !== otp){
+            return res.json({success: false, message: "Invalid OTP"})
+        }
+
+        if(user.verifyOtpExpiryAt < Date.now()){
+            return res.json({success: false, message: "OTP Expired"})
+        }
+
+        user.isAccountVerified = true;
+        user.verifyOtp = ''
+        user.verifyOtpExpiryAt = 0
+
+        await user.save();
+        return res.json({success: true, message: "Email verified successfully"})
+
+    } catch (error) {
+        console.log(error)
+        res.json({success: false, message: error.message})
+    }
+}
